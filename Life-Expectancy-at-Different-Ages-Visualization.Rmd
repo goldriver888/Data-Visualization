@@ -1,0 +1,195 @@
+---
+title: "Visualizing Life Expectancy at Different Ages Globally"
+author: "Thao Tran"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(gganimate)
+library(gifski)
+library(transformr)
+library(ggplot2)
+```
+
+## Data Discription
+
+- This comprehensive dataset amalgamates critical information on period life expectancy from various reputable sources, including the United Nations World Population Prospects (UN WPP) for 2022, Human Mortality Database (HMD) for both 2023 and historical data, as well as insights from Zijdeman et al. (2015) and Riley (2005). The dataset spans diverse periods, harnessing data from demographic studies, mortality databases, and global population prospects. 
+
+#### Variables include:
+
+- Entity: representing countries, 
+- Code: country codes
+- Year: the observed year
+- Period life expectancy at various ages for all sex like:
++ Period life expectancy at birth - Sex: all - Age: 0	Period life expectancy and other ages at 10, 25, 45, 65, and 80. 
+
+- The dataset's unique feature lies in its transition from HMD to UN WPP data in 1950, providing a continuous and extensive exploration of period life expectancy trends over time.
+
+## Research Questions
+
+- There are three research questions of interests below that I will use different visualization to answer them:
+
+1.  How has life expectancy changed over time globally? You can plot life expectancy over time for all countries combined. This will give a general sense of how life expectancy has evolved.
+
+2. What is the average life expectancy in each country? 
+
+3. What is the global average life expectancy over the years with different age groups? And choose one or more countries of your interest to compare their life expectancy. 
+
+```{r}
+life_exp <- read_csv("life-expectancy-at-different-ages.csv", show_col_types = FALSE)
+```
+
+```{r}
+# Convert the data from wide to a long format
+df <- life_exp %>% 
+   pivot_longer(cols = starts_with("Period life expectancy"),
+                names_to = "Age",
+                values_to = "Life Expectancy")
+
+# Removing all missing values
+data <- df[complete.cases(df), ]
+```
+
+### 1. How has life expectancy changed over time globally? You can plot life expectancy over time for all countries combined. This will give a general sense of how life expectancy has evolved.
+
+- Plotting the global life expectancy over time, first, I need to group the data by year and calculate the mean life expectancy for each year. Then, creating a time series plot to visualize how life expectancy changed over time globally.
+
+```{r, warning=FALSE}
+# Calculate mean life expectancy by year
+global_data <- data %>% 
+   group_by(Year) %>% 
+   summarise(`Life Expectancy` = mean(`Life Expectancy`, na.rm = TRUE))
+
+# Time series plot
+
+plot <- ggplot(global_data, aes(x = Year, y = `Life Expectancy`)) +
+  geom_line(color = "blue") +
+  theme_minimal() +
+  theme(axis.title.y = element_text()) +
+  labs(title = "Global Life Expectancy Over Time",
+       x = "Year",
+       y = "Life Expectancy")
+plot
+```
+
+- The global life expectancy shows a story of how people were expected to live in different time periods since 1500s. Back in the 1540s, people were expected to live just a bit over 20 years. But it started to change by the 1590s that there was a noteworthy transformation occurred by the 1590s, leading to an increase in life expectancy to over 40 years.
+
+- From the 1600s to the 1730s, life expectancy kind of bounced around, staying between 30 and 40 years. Then, in the 1770s, something big happened – life expectancy shot up from 36 to 64 years. This coincided with the start of the Industrial Revolution, a time when the world went through major economic, technological, and social changes.
+
+- Post the industrial era, life expectancy continued to fluctuate, ranging between 50 and 72 years. Another significant shift is evident in 2019, where life expectancy surged to 78 years. However, this positive trend faced a downturn after 2019, attributed to the global pandemic, COVID-19.
+
+- In conclusion, life expectancy has had ups and downs over the years. The big jumps often matched with important events like the Industrial Revolution, while unexpected events like pandemics could bring it down.
+
+### 2. What is the average life expectancy in each country? 
+
+- Creating a map that shows average life expectancy for each country. 
+
+```{r}
+#  Calculate average life expectancy for each country
+avg_life_exp <- data %>% 
+   group_by(Entity) %>% 
+   summarise(AvgLifeExp = mean(`Life Expectancy`, na.rm = TRUE))
+
+# Merge with average life expectancy data into a world map:
+
+world_map <- map_data("world")
+merged_data <- merge(world_map, avg_life_exp, by.x = "region", by.y = "Entity")
+
+# Calculate the center of each country 
+
+country_center <- merged_data %>%
+  group_by(region) %>%
+  summarise(long = mean(long), lat = mean(lat))
+
+# Merge with average life expectancy data
+
+country_center <- merge(country_center, avg_life_exp, by.x = "region", by.y = "Entity")
+
+# Create map of average life expectancy
+
+ggplot() +
+  geom_polygon(data = merged_data, aes(
+     x = long, y = lat, group = group, fill = AvgLifeExp)) +
+  geom_text(data = country_center, aes(
+     x = long, y = lat, label = region), size = 3, 
+     check_overlap = TRUE, colour = "black") +
+  coord_quickmap() +
+  scale_fill_gradient(low = "blue", high = "red") +
+  labs(title = "Average Life Expectancy by Country",
+       fill = "Average Life Expectancy")
+```
+
+- The map plot highlights variations in average life expectancy across different countries. Notably, Canada, Japan, and Australia emerge with the highest life expectancies, ranging from 78 to over 80 years. In contrast, Greenland, Ireland, and several others fall into a middle range, with life expectancies ranging between 66 and 73 years. Conversely, countries such as Afghanistan and Angola exhibit the lowest life expectancies, dipping below 70 years. This geographical perspective underscores the disparities in health outcomes and underscores the need for targeted interventions to improve life expectancies in specific regions. 
+
+### 3. What is the global average life expectancy over the years with different age groups? And choose one or more countries of your interest to compare their life expectancy. 
+
+
+```{r, warning=FALSE}
+data$Age <- gsub("Period life expectancy - Sex: all - Age: ", "", data$Age)
+data$Age <- as.numeric(data$Age)
+```
+
+```{r, warning=FALSE}
+data$Age <- factor(data$Age)
+
+# Calculate the average life expectancy for each age group for each year
+avg_life_exp_by_age_group <- data %>%
+  group_by(Year, Age) %>%
+  summarise(AvgLifeExp = mean(`Life Expectancy`, na.rm = TRUE), .groups = "drop")
+
+# Remove missing values
+
+avg_life_exp_by_age_group <- na.omit(avg_life_exp_by_age_group)
+
+# Create time series plot of the average life expectancy globally
+animated_plot <- animated_plot <- ggplot(avg_life_exp_by_age_group, aes(x = Year, y = AvgLifeExp, color = Age, group = Age)) +
+  geom_line() +
+  scale_color_brewer(palette = "Set1") +  # Use this line instead
+  labs(x = "Year", y = "Average Life Expectancy", title = "Average Life Expectancy Over Time for Different Age Groups, globally") +
+  theme(legend.position = "bottom") +
+  scale_x_continuous(limits = c(1750, NA)) +
+  transition_reveal(Year)
+
+animate(animated_plot)
+```
+
+- The animated time series plot, depicting various age groups, reveals a significant global shift in average life expectancy around 1950. During this period, all age groups experienced an increase, ranging between 62-85 years to 70-88 years.
+
+- In particular, the age group of 10 stands out as consistently having the lowest average life expectancy compared to other groups since the 1750s. Notably, this age group exhibits the most pronounced instability in average life expectancy over time.
+
+- Contrasting with the relative stability of the 45, 65, and 80 age groups until the 1950s, the age group of 10 witnessed a notable decline around that time, dropping from 70 to 62 years. The fluctuation in average life expectancy for this group contrasts with the steadier trends observed in other age groups.
+
+- Furthermore, delving into historical data, the age group of 10 experienced its lowest point in the 1770s, with an average life expectancy around 40 years. This historical context provides insights into the variability and unique trajectory of life expectancy for different age groups over the years.
+
+```{r, warning=FALSE}
+chosen_countries <- c("United States", "Vietnam")
+
+filtered_data <-  data %>% 
+   filter(Entity %in% chosen_countries)
+
+chosen_avg_life_exp <- filtered_data %>% 
+   group_by(Year, Entity) %>% 
+   summarise(AvgLifeExp = mean(`Life Expectancy`, na.rm = TRUE), .groups = "drop")
+
+ggplot(chosen_avg_life_exp, aes(x = Year, y = AvgLifeExp, color = Entity)) +
+  geom_line() +
+  scale_color_brewer(palette = "Set1") +
+  labs(x = "Year", y = "Average Life Expectancy", title = "Average Life Expectancy Over Time for U.S and Vietnam") +
+  scale_x_continuous(limits = c(1940, NA)) +
+  theme(legend.position = "bottom")
+```
+
+- The time series data for the United States and Vietnam paints distinct pictures for each country. Notably, there's a gap in the available data for Vietnam before 1950. However, from that point onward, a consistent trend emerges: The average life expectancy in Vietnam has consistently been lower than the United States. The life expectation of Vietnam population of different age group was lowest about 68 years in 1950 and highest, 80 years in 2019.
+
+- Highlighting the peaks in 2019 before the arrival of the Covid-19 pandemic, we observe that the U.S. reached around 87 years, while Vietnam registered 83 years. This difference in life expectancy could be attributed to differing living conditions between the two countries. The United States, being a developed nation, affords its population greater access to healthcare, advanced technology, superior education, and an overall higher quality of life. These factors likely contribute to the sustained difference in life expectancy trends between Vietnam and the United States since the 1950s."
+
+### References
+
+This analysis uses data on life expectancy at different age groups. The data source is cited as follows:
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; UN WPP (2022); HMD (2023); Zijdeman et al. (2015); Riley (2005) – with minor processing by Our World in Data. Life expectancy at birth – Various sources – period tables [dataset]. Human Mortality Database, Human Mortality Database; United Nations, World Population Prospects 2022; United Nations, World Population Prospects; Zijdeman et al., Life Expectancy at birth 2; James C. Riley, Estimates of Regional and Global Life Expectancy, 1800-2001 [original data]. Retrieved December 12, 2023 from [Our World in Data](https://ourworldindata.org/grapher/life-expectancy).
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; “Data Page: Life expectancy at birth”, part of the following publication: Saloni Dattani, Lucas Rodés-Guirao, Hannah Ritchie, Esteban Ortiz-Ospina and Max Roser (2023) - “Life Expectancy”. Data adapted from Human Mortality Database, United Nations, Zijdeman et al., James C. Riley. Retrieved from https://ourworldindata.org/grapher/life-expectancy [online resource]
+
+
